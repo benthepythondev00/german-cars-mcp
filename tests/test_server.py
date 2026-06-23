@@ -1,70 +1,49 @@
-from src import server
+from src import realestate, server
 
 
-def test_demo_mode_returns_listings(monkeypatch):
-    monkeypatch.setattr(server, "APIFY_TOKEN", "")
-    monkeypatch.setattr(server, "ACTOR_ID", "")
-    res = server._search(make="BMW", limit=3)
-    assert res["demo"] is True
-    assert len(res["listings"]) == 3
-    assert res["listings"][0]["url"].startswith("http")
-    assert "price_eur" in res["listings"][0]
+def test_demo_fallback_when_no_live_results(monkeypatch):
+    monkeypatch.setattr(realestate, "search", lambda **k: [])
+    r = server._search_properties(city="berlin", limit=3)
+    assert r["demo"] is True
+    assert len(r["listings"]) == 3
+    assert r["listings"][0]["url"].startswith("http")
 
 
-def test_free_limit_caps_results(monkeypatch):
-    monkeypatch.setattr(server, "APIFY_TOKEN", "")
-    monkeypatch.setattr(server, "FREE_LIMIT", 5)
-    res = server._search(limit=100)
-    assert len(res["listings"]) <= 5
-
-
-def test_live_path_maps_input_and_normalizes(monkeypatch):
-    """With token+actor set, it should call the actor and normalize output."""
+def test_live_path_caps_and_passes_filters(monkeypatch):
     captured = {}
 
-    class FakeDatasetClient:
-        def list_items(self, limit=None):
-            class R:
-                items = [
-                    {"make": "BMW", "model": "320d", "year": 2019, "price_eur": 21900,
-                     "mileage_km": 98000, "url": "https://x/1", "junk": "drop me"},
-                ]
-            return R()
+    def fake_search(**kwargs):
+        captured.update(kwargs)
+        return [{"price_eur": 1000, "city": "Munich", "url": "u"}] * kwargs["limit"]
 
-    class FakeActorClient:
-        def call(self, run_input=None):
-            captured["run_input"] = run_input
-            return {"defaultDatasetId": "ds1"}
-
-    class FakeClient:
-        def __init__(self, token):
-            captured["token"] = token
-
-        def actor(self, actor_id):
-            captured["actor_id"] = actor_id
-            return FakeActorClient()
-
-        def dataset(self, ds_id):
-            return FakeDatasetClient()
-
-    import apify_client
-    monkeypatch.setattr(apify_client, "ApifyClient", FakeClient)
-    monkeypatch.setattr(server, "APIFY_TOKEN", "tok")
-    monkeypatch.setattr(server, "ACTOR_ID", "me/mobile-de-scraper")
-
-    res = server._search(make="BMW", fuel="diesel", transmission="automatic", limit=1)
-    assert captured["token"] == "tok"
-    assert captured["actor_id"] == "me/mobile-de-scraper"
-    assert captured["run_input"]["fuel"] == "DIESEL"
-    assert captured["run_input"]["transmission"] == "AUTOMATIC_GEAR"
-    assert captured["run_input"]["make"] == "BMW"
-    assert res["listings"][0] == {
-        "make": "BMW", "model": "320d", "year": 2019,
-        "mileage_km": 98000, "price_eur": 21900, "url": "https://x/1",
-    }
+    monkeypatch.setattr(realestate, "search", fake_search)
+    monkeypatch.setattr(server, "FREE_LIMIT", 5)
+    r = server._search_properties(city="munich", max_price=2000, limit=100)
+    assert captured["city"] == "munich"
+    assert captured["max_price"] == 2000
+    assert len(r["listings"]) <= 5
+    assert "count" in r
 
 
-def test_fuel_and_transmission_maps():
-    assert server._FUEL_MAP["diesel"] == "DIESEL"
-    assert server._FUEL_MAP["electric"] == "ELECTRICITY"
-    assert server._TRANS_MAP["automatic"] == "AUTOMATIC_GEAR"
+def test_build_search_url_maps_types():
+    u = realestate.build_search_url("Berlin", "buy", "house", max_price=500000, min_rooms=3)
+    assert "/berlin/haeuser/kaufen" in u
+    assert "pmax=500000" in u
+    assert "zimin=3" in u
+
+
+def test_parse_extracts_listing_and_drops_pii():
+    html = (
+        '<div class="css-79elbk"><a href="/expose/abc123"><h2>Nice flat</h2></a>'
+        ' 1.200 € Kaltmiete 60 m² 2 Zimmer Beispielstr. 1, Mitte, Berlin (10115)</div>'
+    )
+    items = realestate.extract_listings_from_html(html)
+    assert len(items) == 1
+    it = items[0]
+    assert it["expose_id"] == "abc123"
+    assert it["price_eur"] == 1200.0
+    assert it["size_sqm"] == 60.0
+    assert it["rooms"] == 2.0
+    assert it["city"] == "Berlin"
+    assert it["plz"] == "10115"
+    assert "agent_name" not in it  # personal data dropped

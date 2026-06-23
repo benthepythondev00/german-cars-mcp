@@ -4,21 +4,14 @@ startCommand:
   configSchema:
     type: object
     properties:
-      apifyToken:
-        type: string
-        title: Apify token
-        description: Optional. Without it the server returns demo listings.
-      cardataActorId:
-        type: string
-        title: Apify actor id
-        description: e.g. benthepythondev/mobile-de-scraper
+      freeLimit:
+        type: integer
+        title: Free result limit
+        default: 10
     required: []
   commandFunction: |-
     (config) => ({
       command: 'python',
       args: ['src/server.py'],
-      env: {
-        APIFY_TOKEN: config.apifyToken || '',
-        CARDATA_ACTOR_ID: config.cardataActorId || ''
-      }
+      env: { REALESTATE_FREE_LIMIT: String(config.freeLimit || 10) }
     })

@@ -1,73 +1,56 @@
-# German Used Cars — MCP server
+# German Real Estate — MCP server
 
-A free [MCP](https://modelcontextprotocol.io) server that gives your AI agent **structured
-German used-car listings from mobile.de**. One tool, clean JSON, no scraping headaches.
-
-mobile.de has no public API and blocks ordinary scrapers with Akamai bot protection — this
-server is powered by a hardened Apify actor (Camoufox stealth browser + German residential
-proxy) that gets the data reliably. That's the hard part; you just call a tool.
+A free [MCP](https://modelcontextprotocol.io) server that gives your AI agent **structured German
+property listings from immowelt.de**. One tool, clean JSON, **no API key and no proxy — it just
+works.**
 
 ## Tool
 
-### `search_used_cars`
-Search listings by the usual filters and get back structured cars.
-
+### `search_properties`
 | Param | Type | Example |
 |---|---|---|
-| `make` | string | `"BMW"` |
-| `model` | string | `"320d"` |
-| `price_min` / `price_max` | int (EUR) | `15000` / `30000` |
-| `year_min` | int | `2018` |
-| `mileage_max` | int (km) | `120000` |
-| `fuel` | string | `petrol`, `diesel`, `hybrid`, `electric`, `lpg`, `cng` |
-| `transmission` | string | `manual`, `automatic`, `semi` |
-| `zip_code` + `radius_km` | string + int | `"80331"`, `50` |
+| `city` | string | `"berlin"`, `"munich"`, `"hamburg"`, `"cologne"` |
+| `transaction_type` | string | `"rent"` or `"buy"` |
+| `property_type` | string | `"apartment"`, `"house"`, `"plot"`, `"commercial"` |
+| `min_price` / `max_price` | int (EUR) | `800` / `2000` |
+| `min_size` | int (m²) | `60` |
+| `min_rooms` | number | `3` |
 | `limit` | int | `10` (free tier capped) |
 
-Returns `{ "listings": [ { make, model, year, mileage_km, price_eur, fuel, transmission, power_kw, location, url, ... } ], "note": "..." }`.
+Returns `{ "listings": [ { price_eur, price_label, size_sqm, rooms, floor, address, district, city, plz, url, image_url } ], "note": "..." }`.
 
-## Quick start (Claude Desktop / Cursor / any MCP client)
+## Quick start (no key needed)
 
 ```bash
-git clone <this repo> && cd cardata-mcp
+git clone <this repo> && cd german-realestate-mcp
 python3.11 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Add to your MCP client config (e.g. Claude Desktop `claude_desktop_config.json`):
+Add to your MCP client (e.g. Claude Desktop `claude_desktop_config.json`) — **no env vars required**:
 
 ```json
 {
   "mcpServers": {
-    "german-cars": {
-      "command": "/absolute/path/cardata-mcp/venv/bin/python",
-      "args": ["/absolute/path/cardata-mcp/src/server.py"],
-      "env": {
-        "APIFY_TOKEN": "your_apify_token",
-        "CARDATA_ACTOR_ID": "your-username/mobile-de-scraper"
-      }
+    "german-real-estate": {
+      "command": "/absolute/path/german-realestate-mcp/venv/bin/python",
+      "args": ["/absolute/path/german-realestate-mcp/src/server.py"]
     }
   }
 }
 ```
 
-Then ask your agent: *"Find me diesel BMW 3-series under €25k, max 120k km, near Munich."*
+Then ask your agent: *"Find 3-room apartments to rent in Munich under €2,000."*
 
-## Demo mode
-Run it with **no** `APIFY_TOKEN` / `CARDATA_ACTOR_ID` and it returns realistic sample
-listings — so you can wire it up and see the shape instantly before connecting live data.
-
-## Live data
-Live results come from an Apify actor you control:
-1. Deploy the mobile.de actor to your Apify account (`apify push`).
-2. Set `APIFY_TOKEN` and `CARDATA_ACTOR_ID` (e.g. `your-username/mobile-de-scraper`).
-
-The actor uses Apify's German residential proxy + Camoufox to get past Akamai.
+## How it works
+Scrapes immowelt.de directly with `httpx` + BeautifulSoup. **Listing data only** — realtor/agent
+personal data is intentionally dropped. If a query returns nothing, the tool returns a small sample
+so it never comes back empty.
 
 ## Free tier & beyond
-The free tier caps results per call (`CARDATA_FREE_LIMIT`, default 10). A paid API (full
-pages, AutoScout24 as a second source, price history, higher limits) is the next step — the
-free MCP server is the front door.
+The free tier caps results (`REALESTATE_FREE_LIMIT`, default 10). A paid API is the next step:
+more cities and sources (kleinanzeigen, price comparison), detail-page enrichment, price history,
+and higher limits. The free MCP server is the front door.
 
 ## Develop
 ```bash
@@ -76,5 +59,5 @@ pytest
 ```
 
 ## Legal
-Returns listing data only (make/model/price/mileage/etc.) — no seller personal data. Use in
-line with mobile.de's terms and applicable law.
+Returns listing data only (price/size/rooms/location) — no personal data. Use in line with
+immowelt's terms and applicable law.
