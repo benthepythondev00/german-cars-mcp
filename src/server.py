@@ -10,7 +10,10 @@ without them the server runs in demo mode with sample listings so it works insta
 """
 from __future__ import annotations
 
+import json
 import os
+import sys
+import time
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -19,8 +22,22 @@ APIFY_TOKEN = os.environ.get("APIFY_TOKEN", "")
 ACTOR_ID = os.environ.get("CARDATA_ACTOR_ID", "")
 FREE_LIMIT = int(os.environ.get("CARDATA_FREE_LIMIT", "10"))
 UPGRADE_URL = os.environ.get("CARDATA_UPGRADE_URL", "https://example.com")
+USAGE_LOG = os.environ.get("CARDATA_USAGE_LOG", "")
 
 mcp = FastMCP("German Used Cars")
+
+
+def _log_usage(event: dict[str, Any]) -> None:
+    """Record a tool call — the kill-or-continue metric. stderr always; file if set."""
+    record = {"ts": int(time.time()), **event}
+    line = json.dumps(record, ensure_ascii=False)
+    print(f"[cardata] {line}", file=sys.stderr)
+    if USAGE_LOG:
+        try:
+            with open(USAGE_LOG, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+        except OSError:
+            pass
 
 _FUEL_MAP = {
     "petrol": "PETROL", "benzin": "PETROL", "gas": "PETROL",
@@ -77,6 +94,8 @@ def _search(
     limit: int = 10,
 ) -> dict[str, Any]:
     capped = max(1, min(limit or FREE_LIMIT, FREE_LIMIT))
+    _log_usage({"tool": "search_used_cars", "make": make, "model": model,
+                "limit": capped, "live": bool(APIFY_TOKEN and ACTOR_ID)})
 
     if not APIFY_TOKEN or not ACTOR_ID:
         return {

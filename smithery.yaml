@@ -1,0 +1,24 @@
+# Smithery configuration — https://smithery.ai/docs/build/project-config
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      apifyToken:
+        type: string
+        title: Apify token
+        description: Optional. Without it the server returns demo listings.
+      cardataActorId:
+        type: string
+        title: Apify actor id
+        description: e.g. benthepythondev/mobile-de-scraper
+    required: []
+  commandFunction: |-
+    (config) => ({
+      command: 'python',
+      args: ['src/server.py'],
+      env: {
+        APIFY_TOKEN: config.apifyToken || '',
+        CARDATA_ACTOR_ID: config.cardataActorId || ''
+      }
+    })
